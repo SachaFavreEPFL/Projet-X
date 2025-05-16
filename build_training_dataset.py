@@ -1,6 +1,7 @@
 import json
 import pandas as pd
 import numpy as np
+from sklearn.preprocessing import LabelEncoder
 
 # Chargement des données
 with open('dataset/stocks_data.json', 'r') as f:
@@ -193,7 +194,7 @@ df[train_cols].to_csv('dataset/train_stocks_valuation.csv', index=False)
 
 # Création du fichier léger avec les variables brutes
 raw_cols = [
-    'symbol', 'sector',
+    'symbol',
     # Valorisation
     'pe_ratio', 'pb_ratio', 'ps_ratio', 'peg_ratio',
     # Qualité
@@ -204,6 +205,30 @@ raw_cols = [
     # Marché
     'beta', 'market_cap'
 ]
+
+# Encodage du secteur
+le_sector = LabelEncoder()
+df['sector_encoded'] = le_sector.fit_transform(df['sector'])
+
+# Encodage de la classe de valorisation
+le_valuation = LabelEncoder()
+df['valuation_class_encoded'] = le_valuation.fit_transform(df['valuation_class'])
+
+# Sauvegarde du mapping des secteurs
+sector_mapping = dict(zip(le_sector.classes_, le_sector.transform(le_sector.classes_)))
+print("\nMapping des secteurs :")
+for sector, code in sector_mapping.items():
+    print(f"{code}: {sector}")
+
+# Sauvegarde du mapping des classes de valorisation
+valuation_mapping = dict(zip(le_valuation.classes_, le_valuation.transform(le_valuation.classes_)))
+print("\nMapping des classes de valorisation :")
+for valuation, code in valuation_mapping.items():
+    print(f"{code}: {valuation}")
+
+# Ajout des colonnes encodées
+raw_cols.insert(1, 'sector_encoded')
+raw_cols.append('valuation_class_encoded')
 
 # Sauvegarde du dataset léger
 df[raw_cols].to_csv('dataset/train_stocks_valuation_light.csv', index=False)
