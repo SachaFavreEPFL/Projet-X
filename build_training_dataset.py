@@ -16,6 +16,14 @@ def extract_features(symbol, stock):
     pe = overview.get('pe_ratio', None)
     pb = overview.get('pb_ratio', None)
     ps = overview.get('ps_ratio', None)
+    earnings_growth = overview.get('earnings_growth', None)
+    # Calcul du PEG (éviter la division par zéro ou négatif)
+    peg = None
+    try:
+        if pe is not None and earnings_growth is not None and earnings_growth > 0:
+            peg = pe / earnings_growth
+    except Exception:
+        peg = None
     
     # Qualité
     roe = overview.get('return_on_equity', None)
@@ -26,7 +34,6 @@ def extract_features(symbol, stock):
     current_ratio = overview.get('current_ratio', None)
     
     # Croissance
-    earnings_growth = overview.get('earnings_growth', None)
     revenue_growth = overview.get('revenue_growth', None)
     
     # Marché
@@ -40,6 +47,7 @@ def extract_features(symbol, stock):
         'pe_ratio': pe,
         'pb_ratio': pb,
         'ps_ratio': ps,
+        'peg_ratio': peg,
         # Qualité
         'roe': roe,
         'roa': roa,
@@ -60,11 +68,11 @@ data = [extract_features(sym, stock) for sym, stock in stocks_data.items()]
 df = pd.DataFrame(data)
 
 # Suppression des lignes sans données essentielles
-essential_cols = ['sector', 'pe_ratio', 'pb_ratio', 'ps_ratio', 'roe', 'operating_margins']
+essential_cols = ['sector', 'pe_ratio', 'pb_ratio', 'ps_ratio', 'peg_ratio', 'roe', 'operating_margins']
 df = df.dropna(subset=essential_cols)
 
 # Définition des colonnes par catégorie
-valuation_cols = ['pe_ratio', 'pb_ratio', 'ps_ratio']
+valuation_cols = ['pe_ratio', 'pb_ratio', 'ps_ratio', 'peg_ratio']
 quality_cols = ['roe', 'roa', 'operating_margins', 'profit_margins']
 growth_cols = ['earnings_growth', 'revenue_growth']
 market_cols = ['beta']
@@ -80,9 +88,10 @@ for col in valuation_cols:
 
 # Scores par catégorie
 df['valuation_score'] = (
-    0.4 * df['pe_ratio_gap'] +
-    0.3 * df['pb_ratio_gap'] +
-    0.3 * df['ps_ratio_gap']
+    0.3 * df['pe_ratio_gap'] +
+    0.25 * df['pb_ratio_gap'] +
+    0.25 * df['ps_ratio_gap'] +
+    0.2 * df['peg_ratio_gap']
 )
 
 # Normalisation des scores de qualité (0-100)
@@ -137,11 +146,35 @@ def classify_valuation(score):
 
 df['valuation_class'] = df['final_score'].apply(classify_valuation)
 
+# Calcul du score de solidité financière
+# Normalisation des indicateurs de solidité
+if 'debt_to_equity' in df.columns:
+    df['debt_to_equity_normalized'] = (df['debt_to_equity'].max() - df['debt_to_equity']) / (df['debt_to_equity'].max() - df['debt_to_equity'].min()) * 100
+else:
+    df['debt_to_equity_normalized'] = 50
+
+if 'revenue_growth' in df.columns:
+    df['revenue_growth_normalized'] = (df['revenue_growth'] - df['revenue_growth'].min()) / (df['revenue_growth'].max() - df['revenue_growth'].min()) * 100
+else:
+    df['revenue_growth_normalized'] = 50
+
+if 'current_ratio' in df.columns:
+    df['current_ratio_normalized'] = (df['current_ratio'] - df['current_ratio'].min()) / (df['current_ratio'].max() - df['current_ratio'].min()) * 100
+else:
+    df['current_ratio_normalized'] = 50
+
+# Score de solidité financière (moyenne pondérée)
+df['financial_strength_score'] = (
+    0.4 * df['debt_to_equity_normalized'] +
+    0.3 * df['revenue_growth_normalized'] +
+    0.3 * df['current_ratio_normalized']
+)
+
 # Sauvegarde du dataset
 train_cols = [
     'symbol', 'sector',
     # Valorisation
-    'pe_ratio', 'pb_ratio', 'ps_ratio',
+    'pe_ratio', 'pb_ratio', 'ps_ratio', 'peg_ratio',
     # Qualité
     'roe', 'roa', 'operating_margins', 'profit_margins',
     'debt_to_equity', 'current_ratio',
@@ -151,10 +184,29 @@ train_cols = [
     'beta', 'market_cap',
     # Scores
     'valuation_score', 'quality_score', 'growth_score', 'market_score',
-    'final_score', 'valuation_class'
+    'final_score', 'valuation_class',
+    # Solidité financière
+    'financial_strength_score'
 ]
 
 df[train_cols].to_csv('dataset/train_stocks_valuation.csv', index=False)
+
+# Création du fichier léger avec les variables brutes
+raw_cols = [
+    'symbol', 'sector',
+    # Valorisation
+    'pe_ratio', 'pb_ratio', 'ps_ratio', 'peg_ratio',
+    # Qualité
+    'roe', 'roa', 'operating_margins', 'profit_margins',
+    'debt_to_equity', 'current_ratio',
+    # Croissance
+    'earnings_growth', 'revenue_growth',
+    # Marché
+    'beta', 'market_cap'
+]
+
+# Sauvegarde du dataset léger
+df[raw_cols].to_csv('dataset/train_stocks_valuation_light.csv', index=False)
 
 # Affichage des statistiques
 print("\nDistribution des classes de valorisation :")
