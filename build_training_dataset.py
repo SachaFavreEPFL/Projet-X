@@ -9,37 +9,50 @@ with open('dataset/stocks_data.json', 'r') as f:
 with open('dataset/stocks_history.json', 'r') as f:
     stocks_history = json.load(f)['stocks']
 
+def clean_value(value):
+    """Nettoie une valeur en remplaçant les valeurs aberrantes par None"""
+    if value is None:
+        return None
+    if isinstance(value, (int, float)):
+        if np.isinf(value) or np.isnan(value):
+            return None
+        # Limites raisonnables pour les ratios
+        if value < -1000 or value > 1000:
+            return None
+    return value
+
 def extract_features(symbol, stock):
     overview = stock.get('overview', {}).get('data', {})
     sector = overview.get('sector', None)
     
     # Ratios de valorisation
-    pe = overview.get('pe_ratio', None)
-    pb = overview.get('pb_ratio', None)
-    ps = overview.get('ps_ratio', None)
-    earnings_growth = overview.get('earnings_growth', None)
+    pe = clean_value(overview.get('pe_ratio', None))
+    pb = clean_value(overview.get('pb_ratio', None))
+    ps = clean_value(overview.get('ps_ratio', None))
+    earnings_growth = clean_value(overview.get('earnings_growth', None))
+    
     # Calcul du PEG (éviter la division par zéro ou négatif)
     peg = None
     try:
         if pe is not None and earnings_growth is not None and earnings_growth > 0:
-            peg = pe / earnings_growth
+            peg = clean_value(pe / earnings_growth)
     except Exception:
         peg = None
     
     # Qualité
-    roe = overview.get('return_on_equity', None)
-    roa = overview.get('return_on_assets', None)
-    operating_margins = overview.get('operating_margins', None)
-    profit_margins = overview.get('profit_margins', None)
-    debt_to_equity = overview.get('debt_to_equity', None)
-    current_ratio = overview.get('current_ratio', None)
+    roe = clean_value(overview.get('return_on_equity', None))
+    roa = clean_value(overview.get('return_on_assets', None))
+    operating_margins = clean_value(overview.get('operating_margins', None))
+    profit_margins = clean_value(overview.get('profit_margins', None))
+    debt_to_equity = clean_value(overview.get('debt_to_equity', None))
+    current_ratio = clean_value(overview.get('current_ratio', None))
     
     # Croissance
-    revenue_growth = overview.get('revenue_growth', None)
+    revenue_growth = clean_value(overview.get('revenue_growth', None))
     
     # Marché
-    beta = overview.get('beta', None)
-    market_cap = overview.get('market_cap', None)
+    beta = clean_value(overview.get('beta', None))
+    market_cap = clean_value(overview.get('market_cap', None))
     
     return {
         'symbol': symbol,
@@ -71,6 +84,13 @@ df = pd.DataFrame(data)
 # Suppression des lignes sans données essentielles
 essential_cols = ['sector', 'pe_ratio', 'pb_ratio', 'ps_ratio', 'peg_ratio', 'roe', 'operating_margins']
 df = df.dropna(subset=essential_cols)
+
+# Remplacement des valeurs aberrantes restantes par la médiane du secteur
+for col in df.select_dtypes(include=[np.number]).columns:
+    if col != 'market_cap':  # Ne pas traiter la capitalisation boursière
+        df[col] = df.groupby('sector')[col].transform(
+            lambda x: x.fillna(x.median())
+        )
 
 # Définition des colonnes par catégorie
 valuation_cols = ['pe_ratio', 'pb_ratio', 'ps_ratio', 'peg_ratio']
