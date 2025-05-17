@@ -52,4 +52,8 @@ env/
 
 # Système
 .DS_Store
-Thumbs.db 
+Thumbs.db
+
+XGBoost/confusion_matrix.png
+XGBoost/feature_importance.png
+XGBoost/xgboost_model.joblib 

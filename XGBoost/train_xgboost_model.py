@@ -11,8 +11,12 @@ import matplotlib.pyplot as plt
 import seaborn as sns
 import joblib
 
+# Dossier de sortie pour les fichiers générés
+OUTPUT_DIR = 'XGBoost'
+os.makedirs(OUTPUT_DIR, exist_ok=True)
+
 # Vérification de l'existence du fichier de configuration
-CONFIG_PATH = os.path.join('XGBoost', 'xgb_best_config.json')
+CONFIG_PATH = os.path.join(OUTPUT_DIR, 'xgb_best_config.json')
 if not os.path.exists(CONFIG_PATH):
     print(f"[ERREUR] Le fichier '{CONFIG_PATH}' est introuvable.")
     print("Veuillez d'abord lancer 'tune_xgboost.py' pour générer la meilleure configuration.")
@@ -90,7 +94,7 @@ def evaluate_model(model, X_test, y_test):
     plt.title('Matrice de Confusion')
     plt.ylabel('Vrai Label')
     plt.xlabel('Prédiction')
-    plt.savefig('confusion_matrix.png')
+    plt.savefig(os.path.join(OUTPUT_DIR, 'confusion_matrix.png'))
     plt.close()
     
     # Importance des features
@@ -103,7 +107,7 @@ def evaluate_model(model, X_test, y_test):
     sns.barplot(x='importance', y='feature', data=feature_importance)
     plt.title('Importance des Features')
     plt.tight_layout()
-    plt.savefig('feature_importance.png')
+    plt.savefig(os.path.join(OUTPUT_DIR, 'feature_importance.png'))
     plt.close()
     
     return accuracy, feature_importance
@@ -143,11 +147,11 @@ def main():
     
     # Sauvegarde du modèle
     print("\nSauvegarde du modèle...")
-    joblib.dump(model, 'xgboost_model.joblib')
+    joblib.dump(model, os.path.join(OUTPUT_DIR, 'xgboost_model.joblib'))
     
     print("\nEntraînement terminé !")
-    print("Le modèle a été sauvegardé.")
-    print("Les graphiques de la matrice de confusion et de l'importance des features ont été générés.")
+    print(f"Le modèle a été sauvegardé dans {os.path.join(OUTPUT_DIR, 'xgboost_model.joblib')}")
+    print(f"Les graphiques de la matrice de confusion et de l'importance des features ont été générés dans le dossier {OUTPUT_DIR}.")
 
 if __name__ == "__main__":
     main() 
