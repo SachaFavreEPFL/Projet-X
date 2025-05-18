@@ -6,6 +6,7 @@ from sklearn.preprocessing import LabelEncoder
 # Chargement des données
 with open('dataset/stocks_data.json', 'r') as f:
     stocks_data = json.load(f)['stocks']
+    print(f"\nNombre total d'actions dans stocks_data.json : {len(stocks_data)}")
 with open('dataset/stocks_history.json', 'r') as f:
     stocks_history = json.load(f)['stocks']
 
@@ -81,9 +82,65 @@ def extract_features(symbol, stock):
 data = [extract_features(sym, stock) for sym, stock in stocks_data.items()]
 df = pd.DataFrame(data)
 
+print(f"\nNombre d'actions après extraction initiale : {len(df)}")
+
+# Analyse des valeurs manquantes par colonne
+print("\nValeurs manquantes par colonne après extraction :")
+missing_values = df.isnull().sum()
+print(missing_values)
+
+# Sauvegarde du nombre d'actions avant filtrage
+df_before = len(df)
+
 # Suppression des lignes sans données essentielles
-essential_cols = ['sector', 'pe_ratio', 'pb_ratio', 'ps_ratio', 'peg_ratio', 'roe', 'operating_margins']
+essential_cols = ['sector', 'pe_ratio', 'pb_ratio', 'ps_ratio']  # Retrait du peg_ratio des colonnes essentielles
 df = df.dropna(subset=essential_cols)
+
+print(f"\nNombre d'actions après filtrage des données essentielles : {len(df)}")
+print(f"Actions perdues : {df_before - len(df)}")
+
+# Recalcul systématique du PEG
+df['peg_ratio'] = df.apply(
+    lambda row: row['pe_ratio'] / row['earnings_growth'] 
+    if pd.notnull(row['pe_ratio']) and pd.notnull(row['earnings_growth']) and row['earnings_growth'] > 0 
+    else None, 
+    axis=1
+)
+
+# Nettoyage des valeurs extrêmes du PEG
+df['peg_ratio'] = df['peg_ratio'].clip(lower=0, upper=10)  # Limitation des valeurs extrêmes
+
+# Analyse de la distribution des PEG
+print("\nAnalyse de la distribution des PEG :")
+peg_stats = df['peg_ratio'].describe()
+print("\nStatistiques des PEG :")
+print(peg_stats)
+
+# Analyse des PEG par secteur
+print("\nMédiane des PEG par secteur :")
+peg_by_sector = df.groupby('sector')['peg_ratio'].median().sort_values()
+print(peg_by_sector)
+
+# Identification des valeurs extrêmes
+print("\nActions avec PEG extrêmes :")
+extreme_peg = df[df['peg_ratio'].notna()].sort_values('peg_ratio')
+print("\n5 actions avec les PEG les plus bas :")
+print(extreme_peg[['symbol', 'sector', 'peg_ratio', 'pe_ratio', 'earnings_growth']].head())
+print("\n5 actions avec les PEG les plus élevés :")
+print(extreme_peg[['symbol', 'sector', 'peg_ratio', 'pe_ratio', 'earnings_growth']].tail())
+
+# Analyse des valeurs manquantes par colonne essentielle
+print("\nValeurs manquantes par colonne essentielle :")
+missing_essential = df[essential_cols].isnull().sum()
+print(missing_essential)
+
+# Analyse des valeurs aberrantes
+print("\nAnalyse des valeurs aberrantes par colonne :")
+for col in df.select_dtypes(include=[np.number]).columns:
+    if col != 'market_cap':
+        outliers = df[(df[col] < -1000) | (df[col] > 1000)][col].count()
+        if outliers > 0:
+            print(f"{col}: {outliers} valeurs aberrantes")
 
 # Remplacement des valeurs aberrantes restantes par la médiane du secteur
 for col in df.select_dtypes(include=[np.number]).columns:
@@ -93,7 +150,7 @@ for col in df.select_dtypes(include=[np.number]).columns:
         )
 
 # Définition des colonnes par catégorie
-valuation_cols = ['pe_ratio', 'pb_ratio', 'ps_ratio', 'peg_ratio']
+valuation_cols = ['pe_ratio', 'pb_ratio', 'ps_ratio', 'peg_ratio']  # Utilisation du peg_ratio
 quality_cols = ['roe', 'roa', 'operating_margins', 'profit_margins']
 growth_cols = ['earnings_growth', 'revenue_growth']
 market_cols = ['beta']
