@@ -12,7 +12,7 @@ class StockAnalyzer:
         self.output_file = "dataset/stocks_data.json"
         self.log_file = "dataset/analysis_log.json"
         self.history_file = "dataset/stocks_history.json"
-        self.request_delay = 10  # Délai entre chaque requête en secondes
+        self.request_delay = 1  # Délai entre chaque requête en secondes
         self.history_data = self.load_history()
 
     def load_history(self) -> Dict:
