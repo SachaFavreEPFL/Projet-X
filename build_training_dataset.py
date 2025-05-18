@@ -154,15 +154,15 @@ df['final_score'] = (
 
 # Classification
 def classify_valuation(score):
-    if score <= -30:
+    if score <= -20:  # Ajusté de -30 à -20
         return 'Fortement sous-évaluée'
-    elif score <= -10:
+    elif score <= -5:  # Ajusté de -10 à -5
         return 'Légèrement sous-évaluée'
-    elif score <= 10:
+    elif score <= 5:   # Ajusté de 10 à 5
         return 'Normale'
-    elif score <= 30:
+    elif score <= 20:  # Ajusté de 30 à 20
         return 'Légèrement surévaluée'
-    else:
+    else:             # > 20
         return 'Fortement surévaluée'
 
 df['valuation_class'] = df['final_score'].apply(classify_valuation)
