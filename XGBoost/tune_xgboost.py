@@ -7,6 +7,7 @@ import os
 from itertools import product
 import matplotlib.pyplot as plt
 import numpy as np
+import joblib  # Ajout de l'import pour joblib
 
 def load_data():
     """Load and prepare training data."""
@@ -112,10 +113,13 @@ def optimize_hyperparameters(X_train, X_test, y_train, y_test):
     
     return best_model, best_config, best_score
 
-def save_results(model, config, score, features):
-    """Save results and create visualizations."""
+def save_model(model, config, score, features):
+    """Save the trained model and its configuration."""
     # Create output directory
     os.makedirs('XGBoost', exist_ok=True)
+    
+    # Save the model
+    joblib.dump(model, 'XGBoost/xgb_model.joblib')
     
     # Save configuration
     result = {
@@ -157,15 +161,15 @@ def main():
     for key, value in best_config.items():
         print(f"{key}: {value}")
     
-    print("\nSaving results...")
-    save_results(
+    print("\nSaving model and results...")
+    save_model(
         best_model, 
         best_config, 
         best_score,
         X_train.columns
     )
     
-    print("\nDone! Results have been saved in the 'XGBoost' directory")
+    print("\nDone! Model and results have been saved in the 'XGBoost' directory")
 
 if __name__ == "__main__":
     main() 

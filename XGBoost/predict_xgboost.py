@@ -2,13 +2,13 @@ import os
 import joblib
 import pandas as pd
 import numpy as np
-import xgboost as xgb
-from sklearn.metrics import accuracy_score
+from sklearn.metrics import mean_squared_error, r2_score
 
 # Chemins des fichiers
 MODEL_DIR = 'XGBoost'
-MODEL_PATH = os.path.join(MODEL_DIR, 'xgboost_model.joblib')
-DATA_PATH = 'dataset/train_stocks_valuation.csv'
+MODEL_PATH = os.path.join(MODEL_DIR, 'xgb_model.joblib')
+CONFIG_PATH = os.path.join(MODEL_DIR, 'xgb_best_config.json')
+DATA_PATH = 'dataset/stocks_extracted_filtered.csv'
 
 def load_model():
     """
@@ -26,15 +26,27 @@ def prepare_data():
     # Chargement des données
     df = pd.read_csv(DATA_PATH)
     
-    # Sélection des features
+    # Features utilisées dans tune_xgboost.py
     features = [
-        'pe_ratio', 'pb_ratio', 'ps_ratio', 'peg_ratio',
-        'roe', 'roa', 'operating_margins', 'profit_margins',
-        'debt_to_equity', 'current_ratio',
+        # Ratios de valorisation
+        'pe_ratio', 'pb_ratio', 'ps_ratio', 'peg_ratio', 'enterprise_to_ebitda',
+        
+        # Ratios de qualité
+        'return_on_equity', 'return_on_assets', 'operating_margins', 'profit_margins',
+        'debt_to_equity', 'current_ratio', 'quick_ratio', 'interest_coverage',
+        
+        # Ratios de croissance
         'earnings_growth', 'revenue_growth',
-        'beta', 'market_cap',
-        'sector_encoded'
+        
+        # Ratios de marché
+        'beta', 'market_daily_change',
+        
+        # Ratios financiers
+        'bs_total_liabilities', 'bs_total_equity', 'bs_cash', 'bs_short_term_investments'
     ]
+    
+    # Filtrer les colonnes qui existent dans le DataFrame
+    features = [f for f in features if f in df.columns]
     
     # Vérification des valeurs manquantes
     print("\nVérification des valeurs manquantes :")
@@ -43,11 +55,6 @@ def prepare_data():
     # Vérification des statistiques descriptives
     print("\nStatistiques des features :")
     print(df[features].describe())
-    
-    # Vérification de la distribution des classes (si disponible)
-    if 'valuation_class_encoded' in df.columns:
-        print("\nDistribution des classes :")
-        print(df['valuation_class_encoded'].value_counts(normalize=True).round(3) * 100)
     
     return df[features], df
 
@@ -72,30 +79,30 @@ def main():
         
         print("\nFaisant les prédictions...")
         predictions = model.predict(X)
-        probabilities = model.predict_proba(X)
         
         # Créer un dictionnaire de mapping symbol -> prédiction
         prediction_dict = dict(zip(df['symbol'], predictions))
-        confidence_dict = dict(zip(df['symbol'], np.max(probabilities, axis=1)))
         
         # Ajouter les colonnes de prédiction
         df['xgboost_prediction'] = df['symbol'].map(prediction_dict)
-        df['xgboost_confidence'] = df['symbol'].map(confidence_dict)
         
         # Vérification de l'ajout des colonnes
         print("\nColonnes du DataFrame avant sauvegarde :")
         print(df.columns)
         print("Exemple de lignes :")
-        print(df[['symbol','xgboost_prediction','xgboost_confidence']].head())
+        print(df[['symbol', 'xgboost_prediction']].head())
         
-        # Sauvegarder directement dans le fichier source
+        # Sauvegarder les résultats dans le fichier source
         df.to_csv(DATA_PATH, index=False)
         
-        # Afficher uniquement la précision et la confiance
-        if 'valuation_class_encoded' in df.columns:
-            accuracy = accuracy_score(df['valuation_class_encoded'], predictions)
-            print(f"\nPrécision : {accuracy:.2%}")
-        print(f"Confiance moyenne : {np.mean(probabilities.max(axis=1)):.2%}")
+        # Calculer les métriques si la vraie valeur est disponible
+        if 'overvaluation_score' in df.columns:
+            rmse = np.sqrt(mean_squared_error(df['overvaluation_score'], predictions))
+            r2 = r2_score(df['overvaluation_score'], predictions)
+            print(f"\nMétriques de performance :")
+            print(f"RMSE : {rmse:.4f}")
+            print(f"R² : {r2:.4f}")
+        
         print(f"\nFichier mis à jour : {DATA_PATH}")
         
     except Exception as e:
