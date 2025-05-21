@@ -1,14 +1,115 @@
 import json
 import pandas as pd
 import numpy as np
-from sklearn.preprocessing import LabelEncoder
 
-# Chargement des données
-with open('dataset/stocks_data.json', 'r') as f:
-    stocks_data = json.load(f)['stocks']
-    print(f"\nNombre total d'actions dans stocks_data.json : {len(stocks_data)}")
-with open('dataset/stocks_history.json', 'r') as f:
-    stocks_history = json.load(f)['stocks']
+def normalize_series(series):
+    """Normalise une série en utilisant la méthode min-max"""
+    min_val = series.min()
+    max_val = series.max()
+    if max_val == min_val:
+        return pd.Series(0.5, index=series.index)
+    return (series - min_val) / (max_val - min_val)
+
+def calculate_valuation_score(row):
+    """Calcule le score de valorisation"""
+    scores = []
+    weights = {
+        'pe_ratio': -0.3,  # Plus bas est meilleur
+        'pb_ratio': -0.2,  # Plus bas est meilleur
+        'ps_ratio': -0.2,  # Plus bas est meilleur
+        'peg_ratio': -0.2,  # Plus bas est meilleur
+        'enterprise_to_ebitda': -0.1  # Plus bas est meilleur
+    }
+    
+    for metric, weight in weights.items():
+        if pd.notna(row[metric]):
+            scores.append(weight * row[metric])
+    
+    return np.mean(scores) if scores else np.nan
+
+def calculate_quality_score(row):
+    """Calcule le score de qualité"""
+    scores = []
+    weights = {
+        'return_on_equity': 0.2,
+        'return_on_assets': 0.2,
+        'operating_margins': 0.2,
+        'profit_margins': 0.2,
+        'debt_to_equity': -0.1,  # Plus bas est meilleur
+        'current_ratio': 0.1
+    }
+    
+    for metric, weight in weights.items():
+        if pd.notna(row[metric]):
+            scores.append(weight * row[metric])
+    
+    return np.mean(scores) if scores else np.nan
+
+def calculate_growth_score(row):
+    """Calcule le score de croissance"""
+    scores = []
+    weights = {
+        'earnings_growth': 0.5,
+        'revenue_growth': 0.5
+    }
+    
+    for metric, weight in weights.items():
+        if pd.notna(row[metric]):
+            scores.append(weight * row[metric])
+    
+    return np.mean(scores) if scores else np.nan
+
+def calculate_financial_health_score(row):
+    """Calcule le score de solidité financière"""
+    scores = []
+    weights = {
+        'debt_to_equity': -0.3,  # Plus bas est meilleur
+        'current_ratio': 0.3,
+        'quick_ratio': 0.2,
+        'interest_coverage': 0.2
+    }
+    
+    for metric, weight in weights.items():
+        if pd.notna(row[metric]):
+            scores.append(weight * row[metric])
+    
+    return np.mean(scores) if scores else np.nan
+
+def calculate_momentum_score(row):
+    """Calcule le score de momentum"""
+    scores = []
+    weights = {
+        'market_daily_change': 0.5,
+        'beta': -0.5  # Plus bas est meilleur
+    }
+    
+    for metric, weight in weights.items():
+        if pd.notna(row[metric]):
+            scores.append(weight * row[metric])
+    
+    return np.mean(scores) if scores else np.nan
+
+def calculate_dividend_score(row):
+    """Calcule le score de dividende"""
+    if pd.notna(row['dividend_yield']):
+        return row['dividend_yield']
+    return np.nan
+
+def calculate_overvaluation_score(row):
+    """Calcule un score de surévaluation combinant différents aspects"""
+    scores = []
+    weights = {
+        'valuation_score': -0.4,  # Plus bas est meilleur
+        'quality_score': 0.2,     # Plus haut est meilleur
+        'growth_score': 0.2,      # Plus haut est meilleur
+        'financial_health_score': 0.2  # Plus haut est meilleur
+    }
+    
+    for metric, weight in weights.items():
+        if pd.notna(row[metric]):
+            scores.append(weight * row[metric])
+    
+    return np.mean(scores) if scores else np.nan
 
 def clean_value(value):
     """Nettoie une valeur en remplaçant les valeurs aberrantes par None"""
@@ -17,301 +118,101 @@ def clean_value(value):
     if isinstance(value, (int, float)):
         if np.isinf(value) or np.isnan(value):
             return None
-        # Limites raisonnables pour les ratios
         if value < -1000 or value > 1000:
             return None
     return value
 
 def extract_features(symbol, stock):
+    """Extraction des features pour chaque action"""
     overview = stock.get('overview', {}).get('data', {})
-    sector = overview.get('sector', None)
+    balance_sheet = stock.get('balance_sheet', {}).get('data', {})
+    cash_flow = stock.get('cash_flow', {}).get('data', {})
+    market_data = stock.get('market_data', {}).get('data', {})
+    income_statement = stock.get('income_statement', {}).get('data', {})
     
-    # Ratios de valorisation
-    pe = clean_value(overview.get('pe_ratio', None))
-    pb = clean_value(overview.get('pb_ratio', None))
-    ps = clean_value(overview.get('ps_ratio', None))
-    earnings_growth = clean_value(overview.get('earnings_growth', None))
-    
-    # Calcul du PEG (éviter la division par zéro ou négatif)
-    peg = None
-    try:
-        if pe is not None and earnings_growth is not None and earnings_growth > 0:
-            peg = clean_value(pe / earnings_growth)
-    except Exception:
-        peg = None
-    
-    # Qualité
-    roe = clean_value(overview.get('return_on_equity', None))
-    roa = clean_value(overview.get('return_on_assets', None))
-    operating_margins = clean_value(overview.get('operating_margins', None))
-    profit_margins = clean_value(overview.get('profit_margins', None))
-    debt_to_equity = clean_value(overview.get('debt_to_equity', None))
-    current_ratio = clean_value(overview.get('current_ratio', None))
-    
-    # Croissance
-    revenue_growth = clean_value(overview.get('revenue_growth', None))
-    
-    # Marché
-    beta = clean_value(overview.get('beta', None))
-    market_cap = clean_value(overview.get('market_cap', None))
-    
-    return {
-        'symbol': symbol,
-        'sector': sector,
-        # Valorisation
-        'pe_ratio': pe,
-        'pb_ratio': pb,
-        'ps_ratio': ps,
-        'peg_ratio': peg,
-        # Qualité
-        'roe': roe,
-        'roa': roa,
-        'operating_margins': operating_margins,
-        'profit_margins': profit_margins,
-        'debt_to_equity': debt_to_equity,
-        'current_ratio': current_ratio,
-        # Croissance
-        'earnings_growth': earnings_growth,
-        'revenue_growth': revenue_growth,
-        # Marché
-        'beta': beta,
-        'market_cap': market_cap
-    }
+    features = {}
+    features['symbol'] = symbol
+    features['sector'] = overview.get('sector', None)
+    features['industry'] = overview.get('industry', None)
+    for key in overview:
+        features[key] = clean_value(overview.get(key, None))
+    for key in balance_sheet:
+        features[f'bs_{key}'] = clean_value(balance_sheet.get(key, None))
+    for key in cash_flow:
+        features[f'cf_{key}'] = clean_value(cash_flow.get(key, None))
+    for key in market_data:
+        features[f'market_{key}'] = clean_value(market_data.get(key, None))
+    for key in income_statement:
+        features[f'is_{key}'] = clean_value(income_statement.get(key, None))
+    return features
 
-# Extraction des features
+# Chargement des données
+with open('dataset/stocks_data.json', 'r') as f:
+    stocks_data = json.load(f)['stocks']
+    print(f"\nNombre total d'actions dans stocks_data.json : {len(stocks_data)}")
+
 data = [extract_features(sym, stock) for sym, stock in stocks_data.items()]
 df = pd.DataFrame(data)
 
-print(f"\nNombre d'actions après extraction initiale : {len(df)}")
-
-# Analyse des valeurs manquantes par colonne
-print("\nValeurs manquantes par colonne après extraction :")
-missing_values = df.isnull().sum()
-print(missing_values)
-
-# Sauvegarde du nombre d'actions avant filtrage
-df_before = len(df)
-
-# Suppression des lignes sans données essentielles
-essential_cols = ['sector', 'pe_ratio', 'pb_ratio', 'ps_ratio']  # Retrait du peg_ratio des colonnes essentielles
-df = df.dropna(subset=essential_cols)
-
-print(f"\nNombre d'actions après filtrage des données essentielles : {len(df)}")
-print(f"Actions perdues : {df_before - len(df)}")
-
-# Recalcul systématique du PEG
-df['peg_ratio'] = df.apply(
-    lambda row: row['pe_ratio'] / row['earnings_growth'] 
-    if pd.notnull(row['pe_ratio']) and pd.notnull(row['earnings_growth']) and row['earnings_growth'] > 0 
-    else None, 
-    axis=1
-)
-
-# Nettoyage des valeurs extrêmes du PEG
-df['peg_ratio'] = df['peg_ratio'].clip(lower=0, upper=10)  # Limitation des valeurs extrêmes
-
-# Analyse de la distribution des PEG
-print("\nAnalyse de la distribution des PEG :")
-peg_stats = df['peg_ratio'].describe()
-print("\nStatistiques des PEG :")
-print(peg_stats)
-
-# Analyse des PEG par secteur
-print("\nMédiane des PEG par secteur :")
-peg_by_sector = df.groupby('sector')['peg_ratio'].median().sort_values()
-print(peg_by_sector)
-
-# Identification des valeurs extrêmes
-print("\nActions avec PEG extrêmes :")
-extreme_peg = df[df['peg_ratio'].notna()].sort_values('peg_ratio')
-print("\n5 actions avec les PEG les plus bas :")
-print(extreme_peg[['symbol', 'sector', 'peg_ratio', 'pe_ratio', 'earnings_growth']].head())
-print("\n5 actions avec les PEG les plus élevés :")
-print(extreme_peg[['symbol', 'sector', 'peg_ratio', 'pe_ratio', 'earnings_growth']].tail())
-
-# Analyse des valeurs manquantes par colonne essentielle
-print("\nValeurs manquantes par colonne essentielle :")
-missing_essential = df[essential_cols].isnull().sum()
-print(missing_essential)
-
-# Analyse des valeurs aberrantes
-print("\nAnalyse des valeurs aberrantes par colonne :")
-for col in df.select_dtypes(include=[np.number]).columns:
-    if col != 'market_cap':
-        outliers = df[(df[col] < -1000) | (df[col] > 1000)][col].count()
-        if outliers > 0:
-            print(f"{col}: {outliers} valeurs aberrantes")
-
-# Remplacement des valeurs aberrantes restantes par la médiane du secteur
-for col in df.select_dtypes(include=[np.number]).columns:
-    # Traitement spécial pour market_cap
-    if col == 'market_cap':
-        # Remplir les valeurs manquantes par la médiane du secteur
-        df[col] = df.groupby('sector')[col].transform(
-            lambda x: x.fillna(x.median())
-        )
-    else:
-        df[col] = df.groupby('sector')[col].transform(
-            lambda x: x.fillna(x.median())
-        )
-
-# Définition des colonnes par catégorie
-valuation_cols = ['pe_ratio', 'pb_ratio', 'ps_ratio', 'peg_ratio']  # Utilisation du peg_ratio
-quality_cols = ['roe', 'roa', 'operating_margins', 'profit_margins']
-growth_cols = ['earnings_growth', 'revenue_growth']
-market_cols = ['beta']
-
-# Calcul des médianes par secteur pour les ratios de valorisation
-sector_medians = df.groupby('sector')[valuation_cols].median()
-sector_medians = sector_medians.rename(columns={col: f'{col}_sector_median' for col in valuation_cols})
-df = df.merge(sector_medians, left_on='sector', right_index=True)
-
-# Calcul des écarts en pourcentage
-for col in valuation_cols:
-    df[f'{col}_gap'] = (df[col] - df[f'{col}_sector_median']) / df[f'{col}_sector_median'] * 100
-
-# Scores par catégorie
-df['valuation_score'] = (
-    0.3 * df['pe_ratio_gap'] +
-    0.25 * df['pb_ratio_gap'] +
-    0.25 * df['ps_ratio_gap'] +
-    0.2 * df['peg_ratio_gap']
-)
-
-# Normalisation des scores de qualité (0-100)
-for col in quality_cols:
-    if col in df.columns:
-        df[f'{col}_normalized'] = (df[col] - df[col].min()) / (df[col].max() - df[col].min()) * 100
-
-df['quality_score'] = (
-    0.3 * df['roe_normalized'] +
-    0.2 * df['roa_normalized'] +
-    0.3 * df['operating_margins_normalized'] +
-    0.2 * df['profit_margins_normalized']
-)
-
-# Normalisation des scores de croissance
-for col in growth_cols:
-    if col in df.columns:
-        df[f'{col}_normalized'] = (df[col] - df[col].min()) / (df[col].max() - df[col].min()) * 100
-
-df['growth_score'] = (
-    0.5 * df['earnings_growth_normalized'] +
-    0.5 * df['revenue_growth_normalized']
-)
-
-# Score de marché (inverse du beta, normalisé)
-if 'beta' in df.columns:
-    df['market_score'] = (1 / df['beta']).fillna(0)
-    df['market_score'] = (df['market_score'] - df['market_score'].min()) / (df['market_score'].max() - df['market_score'].min()) * 100
-else:
-    df['market_score'] = 50  # Valeur neutre si beta non disponible
-
-# Score global pondéré
-df['final_score'] = (
-    0.4 * df['valuation_score'] +
-    0.3 * df['quality_score'] +
-    0.2 * df['growth_score'] +
-    0.1 * df['market_score']
-)
-
-# Classification
-def classify_valuation(score):
-    if score <= -20:  # Ajusté de -30 à -20
-        return 'Fortement sous-évaluée'
-    elif score <= -5:  # Ajusté de -10 à -5
-        return 'Légèrement sous-évaluée'
-    elif score <= 5:   # Ajusté de 10 à 5
-        return 'Normale'
-    elif score <= 20:  # Ajusté de 30 à 20
-        return 'Légèrement surévaluée'
-    else:             # > 20
-        return 'Fortement surévaluée'
-
-df['valuation_class'] = df['final_score'].apply(classify_valuation)
-
-# Calcul du score de solidité financière
-# Normalisation des indicateurs de solidité
-if 'debt_to_equity' in df.columns:
-    df['debt_to_equity_normalized'] = (df['debt_to_equity'].max() - df['debt_to_equity']) / (df['debt_to_equity'].max() - df['debt_to_equity'].min()) * 100
-else:
-    df['debt_to_equity_normalized'] = 50
-
-if 'revenue_growth' in df.columns:
-    df['revenue_growth_normalized'] = (df['revenue_growth'] - df['revenue_growth'].min()) / (df['revenue_growth'].max() - df['revenue_growth'].min()) * 100
-else:
-    df['revenue_growth_normalized'] = 50
-
-if 'current_ratio' in df.columns:
-    df['current_ratio_normalized'] = (df['current_ratio'] - df['current_ratio'].min()) / (df['current_ratio'].max() - df['current_ratio'].min()) * 100
-else:
-    df['current_ratio_normalized'] = 50
-
-# Score de solidité financière (moyenne pondérée)
-df['financial_strength_score'] = (
-    0.4 * df['debt_to_equity_normalized'] +
-    0.3 * df['revenue_growth_normalized'] +
-    0.3 * df['current_ratio_normalized']
-)
-
-# Encodage du secteur
-le_sector = LabelEncoder()
-df['sector_encoded'] = le_sector.fit_transform(df['sector'])
-
-# Sauvegarde du mapping des secteurs
-sector_mapping = dict(zip(le_sector.classes_, le_sector.transform(le_sector.classes_)))
-print("\nMapping des secteurs :")
-for sector, code in sector_mapping.items():
-    print(f"{code}: {sector}")
-
-# Encodage de la classe de valorisation
-le_valuation = LabelEncoder()
-df['valuation_class_encoded'] = le_valuation.fit_transform(df['valuation_class'])
-
-# Sauvegarde du mapping des classes de valorisation
-valuation_mapping = dict(zip(le_valuation.classes_, le_valuation.transform(le_valuation.classes_)))
-print("\nMapping des classes de valorisation :")
-for valuation, code in valuation_mapping.items():
-    print(f"{code}: {valuation}")
-
-# Sauvegarde du dataset
-train_cols = [
-    'symbol', 'sector', 'sector_encoded',
-    # Valorisation
-    'pe_ratio', 'pb_ratio', 'ps_ratio', 'peg_ratio',
-    # Qualité
-    'roe', 'roa', 'operating_margins', 'profit_margins',
-    'debt_to_equity', 'current_ratio',
-    # Croissance
-    'earnings_growth', 'revenue_growth',
-    # Marché
-    'beta', 'market_cap',
-    # Scores
-    'valuation_score', 'quality_score', 'growth_score', 'market_score',
-    'final_score', 'valuation_class_encoded',
-    # Solidité financière
-    'financial_strength_score'
+# Liste des colonnes à conserver
+columns_to_keep = [
+    'pe_ratio', 'pb_ratio', 'ps_ratio', 'beta', 'earnings_growth', 'revenue_growth',
+    'profit_margins', 'operating_margins', 'return_on_equity', 'return_on_assets',
+    'debt_to_equity', 'current_ratio', 'name', 'dividend_yield', '52_week_high',
+    '52_week_low', 'target_mean_price', 'target_median_price', 'recommendation',
+    'number_of_analysts', 'quick_ratio', 'interest_coverage', 'enterprise_to_revenue',
+    'enterprise_to_ebitda', 'bs_total_liabilities', 'bs_total_equity', 'bs_cash',
+    'bs_short_term_investments', 'market_current_price', 'market_daily_change'
 ]
 
-# Vérification que toutes les colonnes existent
-missing_cols = [col for col in train_cols if col not in df.columns]
-if missing_cols:
-    print(f"⚠️ Colonnes manquantes dans le dataset : {missing_cols}")
-    # Suppression des colonnes manquantes de la liste
-    train_cols = [col for col in train_cols if col in df.columns]
+# On conserve symbol, sector, industry pour l'identification
+id_columns = ['symbol', 'sector', 'industry']
+final_columns = id_columns + [col for col in columns_to_keep if col in df.columns]
+df_final = df[final_columns]
 
-df[train_cols].to_csv('dataset/train_stocks_valuation.csv', index=False)
+# Calcul de peg_ratio si pe_ratio et earnings_growth sont présents
+if 'pe_ratio' in df_final.columns and 'earnings_growth' in df_final.columns:
+    df_final['peg_ratio'] = df_final['pe_ratio'] / df_final['earnings_growth'].replace(0, np.nan)
+    print("\npeg_ratio calculé à partir de pe_ratio et earnings_growth.")
 
-# Affichage des statistiques
-print("\nDistribution des classes de valorisation :")
-print(df['valuation_class'].value_counts(normalize=True).round(3) * 100)
+# Calcul du pourcentage de valeurs manquantes par ligne
+missing_percentage = df_final.isnull().mean(axis=1) * 100
 
-print("\nCorrélations avec le score final :")
-correlations = df[['valuation_score', 'quality_score', 'growth_score', 'market_score', 'final_score']].corr()
-print(correlations['final_score'].sort_values(ascending=False))
+# Ne garder que les lignes avec moins de 50% de valeurs manquantes
+df_final = df_final[missing_percentage < 50]
 
-print("\nDataset généré : dataset/train_stocks_valuation.csv")
+print(f"\nNombre d'actions avant filtrage : {len(df)}")
+print(f"Nombre d'actions après filtrage : {len(df_final)}")
+print(f"Nombre de colonnes extraites : {len(df_final.columns)}")
+print(f"Colonnes conservées : {df_final.columns.tolist()}")
 
-# Vérification finale des colonnes dans le fichier
-print("\nColonnes dans le dataset :")
-print(train_cols) 
+# Calcul des scores
+print("\nCalcul des scores...")
+df_final['valuation_score'] = df_final.apply(calculate_valuation_score, axis=1)
+df_final['quality_score'] = df_final.apply(calculate_quality_score, axis=1)
+df_final['growth_score'] = df_final.apply(calculate_growth_score, axis=1)
+df_final['financial_health_score'] = df_final.apply(calculate_financial_health_score, axis=1)
+df_final['momentum_score'] = df_final.apply(calculate_momentum_score, axis=1)
+df_final['dividend_score'] = df_final.apply(calculate_dividend_score, axis=1)
+
+# Normalisation des scores
+score_columns = ['valuation_score', 'quality_score', 'growth_score', 
+                'financial_health_score', 'momentum_score', 'dividend_score']
+
+for col in score_columns:
+    df_final[col] = normalize_series(df_final[col])
+
+# Calcul du score de surévaluation
+print("\nCalcul du score de surévaluation...")
+df_final['overvaluation_score'] = df_final.apply(calculate_overvaluation_score, axis=1)
+df_final['overvaluation_score'] = normalize_series(df_final['overvaluation_score'])
+
+# Interprétation du score :
+# - Proche de 1 : Action potentiellement surévaluée
+# - Proche de 0 : Action potentiellement sous-évaluée
+# - Proche de 0.5 : Action correctement valorisée
+
+# Sauvegarde du dataset filtré avec scores
+output_path = 'dataset/stocks_extracted_filtered.csv'
+df_final.to_csv(output_path, index=False)
+print(f"\nDataset filtré avec scores sauvegardé : {output_path}") 
