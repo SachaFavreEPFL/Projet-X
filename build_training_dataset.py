@@ -144,7 +144,13 @@ for col in df.select_dtypes(include=[np.number]).columns:
 
 # Remplacement des valeurs aberrantes restantes par la médiane du secteur
 for col in df.select_dtypes(include=[np.number]).columns:
-    if col != 'market_cap':  # Ne pas traiter la capitalisation boursière
+    # Traitement spécial pour market_cap
+    if col == 'market_cap':
+        # Remplir les valeurs manquantes par la médiane du secteur
+        df[col] = df.groupby('sector')[col].transform(
+            lambda x: x.fillna(x.median())
+        )
+    else:
         df[col] = df.groupby('sector')[col].transform(
             lambda x: x.fillna(x.median())
         )
@@ -248,9 +254,29 @@ df['financial_strength_score'] = (
     0.3 * df['current_ratio_normalized']
 )
 
+# Encodage du secteur
+le_sector = LabelEncoder()
+df['sector_encoded'] = le_sector.fit_transform(df['sector'])
+
+# Sauvegarde du mapping des secteurs
+sector_mapping = dict(zip(le_sector.classes_, le_sector.transform(le_sector.classes_)))
+print("\nMapping des secteurs :")
+for sector, code in sector_mapping.items():
+    print(f"{code}: {sector}")
+
+# Encodage de la classe de valorisation
+le_valuation = LabelEncoder()
+df['valuation_class_encoded'] = le_valuation.fit_transform(df['valuation_class'])
+
+# Sauvegarde du mapping des classes de valorisation
+valuation_mapping = dict(zip(le_valuation.classes_, le_valuation.transform(le_valuation.classes_)))
+print("\nMapping des classes de valorisation :")
+for valuation, code in valuation_mapping.items():
+    print(f"{code}: {valuation}")
+
 # Sauvegarde du dataset
 train_cols = [
-    'symbol', 'sector',
+    'symbol', 'sector', 'sector_encoded',
     # Valorisation
     'pe_ratio', 'pb_ratio', 'ps_ratio', 'peg_ratio',
     # Qualité
@@ -262,53 +288,19 @@ train_cols = [
     'beta', 'market_cap',
     # Scores
     'valuation_score', 'quality_score', 'growth_score', 'market_score',
-    'final_score', 'valuation_class',
+    'final_score', 'valuation_class_encoded',
     # Solidité financière
     'financial_strength_score'
 ]
 
+# Vérification que toutes les colonnes existent
+missing_cols = [col for col in train_cols if col not in df.columns]
+if missing_cols:
+    print(f"⚠️ Colonnes manquantes dans le dataset : {missing_cols}")
+    # Suppression des colonnes manquantes de la liste
+    train_cols = [col for col in train_cols if col in df.columns]
+
 df[train_cols].to_csv('dataset/train_stocks_valuation.csv', index=False)
-
-# Création du fichier léger avec les variables brutes
-raw_cols = [
-    'symbol',
-    # Valorisation
-    'pe_ratio', 'pb_ratio', 'ps_ratio', 'peg_ratio',
-    # Qualité
-    'roe', 'roa', 'operating_margins', 'profit_margins',
-    'debt_to_equity', 'current_ratio',
-    # Croissance
-    'earnings_growth', 'revenue_growth',
-    # Marché
-    'beta', 'market_cap'
-]
-
-# Encodage du secteur
-le_sector = LabelEncoder()
-df['sector_encoded'] = le_sector.fit_transform(df['sector'])
-
-# Encodage de la classe de valorisation
-le_valuation = LabelEncoder()
-df['valuation_class_encoded'] = le_valuation.fit_transform(df['valuation_class'])
-
-# Sauvegarde du mapping des secteurs
-sector_mapping = dict(zip(le_sector.classes_, le_sector.transform(le_sector.classes_)))
-print("\nMapping des secteurs :")
-for sector, code in sector_mapping.items():
-    print(f"{code}: {sector}")
-
-# Sauvegarde du mapping des classes de valorisation
-valuation_mapping = dict(zip(le_valuation.classes_, le_valuation.transform(le_valuation.classes_)))
-print("\nMapping des classes de valorisation :")
-for valuation, code in valuation_mapping.items():
-    print(f"{code}: {valuation}")
-
-# Ajout des colonnes encodées
-raw_cols.insert(1, 'sector_encoded')
-raw_cols.append('valuation_class_encoded')
-
-# Sauvegarde du dataset léger
-df[raw_cols].to_csv('dataset/train_stocks_valuation_light.csv', index=False)
 
 # Affichage des statistiques
 print("\nDistribution des classes de valorisation :")
@@ -318,4 +310,8 @@ print("\nCorrélations avec le score final :")
 correlations = df[['valuation_score', 'quality_score', 'growth_score', 'market_score', 'final_score']].corr()
 print(correlations['final_score'].sort_values(ascending=False))
 
-print("\nDataset d'entraînement généré : dataset/train_stocks_valuation.csv") 
+print("\nDataset généré : dataset/train_stocks_valuation.csv")
+
+# Vérification finale des colonnes dans le fichier
+print("\nColonnes dans le dataset :")
+print(train_cols) 

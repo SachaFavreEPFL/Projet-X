@@ -26,7 +26,7 @@ if not os.path.exists(CONFIG_PATH):
 with open(CONFIG_PATH, 'r') as f:
     best_config = json.load(f)["best_config"]
 
-def load_and_prepare_data(file_path='dataset/train_stocks_valuation_light.csv'):
+def load_and_prepare_data(file_path='dataset/train_stocks_valuation.csv'):
     """
     Charge et prépare les données pour l'entraînement
     """
@@ -45,9 +45,9 @@ def load_and_prepare_data(file_path='dataset/train_stocks_valuation_light.csv'):
     
     # Séparation des features et de la cible
     X = df[features]
-    y = df['valuation_class_encoded']  # Utilisation de valuation_class_encoded
+    y = df['valuation_class_encoded']
     
-    return X, y, None  # Plus besoin de label_encoder car les données sont déjà encodées
+    return X, y, None
 
 def train_model(X, y, test_size=0.2, random_state=42):
     """
@@ -65,6 +65,10 @@ def train_model(X, y, test_size=0.2, random_state=42):
         learning_rate=best_config["learning_rate"],
         subsample=best_config["subsample"],
         colsample_bytree=best_config["colsample_bytree"],
+        min_child_weight=best_config["min_child_weight"],
+        gamma=best_config["gamma"],
+        reg_alpha=best_config["reg_alpha"],
+        reg_lambda=best_config["reg_lambda"],
         use_label_encoder=False,
         eval_metric='mlogloss',
         random_state=42
@@ -117,10 +121,18 @@ def cross_validate_model(X, y, cv=5):
     Effectue une validation croisée
     """
     model = xgb.XGBClassifier(
-        objective='multi:softmax',
-        num_class=len(y.unique()),
-        learning_rate=0.1,
-        max_depth=6
+        n_estimators=best_config["n_estimators"],
+        max_depth=best_config["max_depth"],
+        learning_rate=best_config["learning_rate"],
+        subsample=best_config["subsample"],
+        colsample_bytree=best_config["colsample_bytree"],
+        min_child_weight=best_config["min_child_weight"],
+        gamma=best_config["gamma"],
+        reg_alpha=best_config["reg_alpha"],
+        reg_lambda=best_config["reg_lambda"],
+        use_label_encoder=False,
+        eval_metric='mlogloss',
+        random_state=42
     )
     
     scores = cross_val_score(model, X, y, cv=cv, scoring='accuracy')
