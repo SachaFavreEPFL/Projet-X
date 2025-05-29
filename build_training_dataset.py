@@ -181,6 +181,9 @@ missing_percentage = df_final.isnull().mean(axis=1) * 100
 # Ne garder que les lignes avec moins de 50% de valeurs manquantes
 df_final = df_final[missing_percentage < 50]
 
+# Filtrer les lignes où le secteur est vide
+df_final = df_final[df_final['sector'].notna() & (df_final['sector'] != '')]
+
 print(f"\nNombre d'actions avant filtrage : {len(df)}")
 print(f"Nombre d'actions après filtrage : {len(df_final)}")
 print(f"Nombre de colonnes extraites : {len(df_final.columns)}")
